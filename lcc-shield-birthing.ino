@@ -1,102 +1,14 @@
+#include <m95_eeprom.h>
+
 #include <SPI.h>
 
-static const byte EEPROM_CS = 10;
-int found_eeprom = 0;
+// Older boards
+//static const byte EEPROM_CS = 10;
+//M95_EEPROM eeprom(&SPI, EEPROM_CS, 64);
 
-static const byte EEPROM_WRITE_ENABLE = 0x6;
-static const byte EEPROM_READ_STATUS_REGISTER = 0x5;
-static const byte EEPROM_WRITE_STATUS_REGISTER = 0x1;
-static const byte EEPROM_READ_MEMORY_ARRAY = 0x3;
-static const byte EEPROM_WRITE_MEMORY_ARRAY = 0x2;
-static const byte EEPROM_WRITE_DISABLE = 0x4;
-
-static const int LCC_UNIQUE_ID_ADDR = 0x6000;
-
-// Memory information:
-// page size: 64 bytes
-// Proection can be: whole, half, upper quarter
-//
-// upper quarter(starting at 0x6000):
-// 0x6000 - 0x6008 - LCC ID unique ID
-
-void find_eeprom(){
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_WRITE_ENABLE);
-  digitalWrite(EEPROM_CS, HIGH);
-
-  delay(5);
-
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_READ_STATUS_REGISTER);
-  int read_status_reg = SPI.transfer(0xFF);
-  digitalWrite(EEPROM_CS, HIGH);
-
-  delay(5);
-
-  if(read_status_reg != 0xFF &&
-     read_status_reg & (0x01 << 1)){
-    // WEL bit is set, so we are talking with the EEPROM!
-    // Let's go and disable it again
-    found_eeprom = 1;
-    digitalWrite(EEPROM_CS, LOW);
-    SPI.transfer(EEPROM_WRITE_DISABLE);
-    digitalWrite(EEPROM_CS, HIGH);
-    Serial.println("Found EEPROM!");
-  }
-}
-
-void eeprom_read_statusreg(){
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_READ_STATUS_REGISTER);
-  int read_status_reg = SPI.transfer(0xFF);
-  digitalWrite(EEPROM_CS, HIGH);
-
-  Serial.print("Status register: ");
-  Serial.print(read_status_reg, HEX);
-  Serial.println();
-}
-
-void eeprom_read(int offset, void* data, int numBytes){
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_READ_MEMORY_ARRAY);
-
-  SPI.transfer((offset & 0xFF00) >> 8);
-  SPI.transfer((offset & 0x00FF) >> 0);
-
-  uint8_t* u8_data = data;
-  while(numBytes > 0){
-    numBytes--;
-    *u8_data = SPI.transfer(0xFF); // dummy byte
-    u8_data++;
-  }
-  Serial.println();
-
-  digitalWrite(EEPROM_CS, HIGH);
-}
-
-void eeprom_write(int offset, void* data, int numBytes){
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_WRITE_ENABLE);
-  digitalWrite(EEPROM_CS, HIGH);
-
-  delay(5);
-
-  eeprom_read_statusreg();
-
-  digitalWrite(EEPROM_CS, LOW);
-  SPI.transfer(EEPROM_WRITE_MEMORY_ARRAY);
-  SPI.transfer((offset & 0xFF00) >> 8);
-  SPI.transfer((offset & 0x00FF) >> 0);
-
-  uint8_t* u8_data = data;
-  while(numBytes > 0){
-    numBytes--;
-    SPI.transfer(*u8_data); // data byte
-    u8_data++;
-  }
-
-  digitalWrite(EEPROM_CS, HIGH);
-}
+// Nov 2023 boards
+static const byte EEPROM_CS = 7;
+M95_EEPROM eeprom(&SPI, EEPROM_CS, 256, 3, true);
 
 void print_node_id(uint64_t node_id){
     char buffer[3];
@@ -127,21 +39,33 @@ void setup() {
     digitalWrite (LED_BUILTIN, !digitalRead (LED_BUILTIN)) ;
   }
 
+  pinMode(EEPROM_CS, OUTPUT);
+
   SPI.begin();
+  eeprom.begin();
 
-  find_eeprom();
-
-  if(!found_eeprom){
+  if(!eeprom.exists()){
     Serial.println(F("Unable to find EEPROM: PANIC!"));
     while(1){}
   }
 
+  Serial.print("Status register: ");
+  Serial.println(eeprom.status_register(), HEX);
+
+  Serial.print("ID page locked? ");
+  Serial.println(eeprom.id_page_locked());
+
   uint64_t node_id;
-  eeprom_read(LCC_UNIQUE_ID_ADDR, &node_id, 8);
+  eeprom.read_id_page(8, &node_id);
 
   Serial.print("LCC ID: ");
   print_node_id(node_id);
   Serial.println();
+
+  if(eeprom.id_page_locked()){
+    Serial.println("ID page locked, cannot change");
+    return;
+  }
 
   if(node_id != 0l){
     Serial.println("Type 'c' within 5 seconds to change node ID");
@@ -180,11 +104,7 @@ void setup() {
     int response = Serial.read();
 
     if(response == 'y'){
-      eeprom_read_statusreg();
-      eeprom_write(LCC_UNIQUE_ID_ADDR, &new_node_id, 8);
-      eeprom_read_statusreg();
-      delay(5);
-      eeprom_read_statusreg();
+      eeprom.write_id_page(8, &new_node_id);
       Serial.println("New node ID set");
     }else{
       Serial.println("Node ID not set");
