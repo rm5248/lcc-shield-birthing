@@ -8,7 +8,7 @@
 
 // Nov 2023 boards
 static const byte EEPROM_CS = 7;
-M95_EEPROM eeprom(&SPI, EEPROM_CS, 256, 3, true);
+M95_EEPROM eeprom(SPI, EEPROM_CS, 256, 3, true);
 
 void print_node_id(uint64_t node_id){
     char buffer[3];
