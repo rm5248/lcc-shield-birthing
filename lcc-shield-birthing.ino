@@ -1,4 +1,4 @@
-#include <m95_eeprom.h>
+#include <M95_EEPROM.h>
 
 #include <SPI.h>
 
