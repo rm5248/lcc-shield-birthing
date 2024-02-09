@@ -10,6 +10,19 @@
 static const byte EEPROM_CS = 7;
 M95_EEPROM eeprom(SPI, EEPROM_CS, 256, 3, true);
 
+#define ID_VERSION 1
+#define MANUFACTURER "Snowball Creek Electronics"
+#define PART_NUMBER "SCE-230900"
+#define HARDWARE_REV "Rev.3"
+
+struct id_page{
+  uint64_t node_id;
+  uint16_t id_version;
+  char manufacturer[32];
+  char part_number[21];
+  char hw_version[12];
+};
+
 void print_node_id(uint64_t node_id){
     char buffer[3];
     sprintf(buffer, "%02X", (int)((node_id & 0xFF0000000000l) >> 40));
@@ -33,6 +46,8 @@ void print_node_id(uint64_t node_id){
 }
 
 void setup() {
+  struct id_page id;
+
   Serial.begin (9600) ;
   while (!Serial) {
     delay (50) ;
@@ -56,11 +71,20 @@ void setup() {
   Serial.println(eeprom.id_page_locked());
 
   uint64_t node_id;
-  eeprom.read_id_page(8, &node_id);
+  eeprom.read_id_page(sizeof(id), &id);
+  node_id = id.node_id;
 
   Serial.print("LCC ID: ");
   print_node_id(node_id);
   Serial.println();
+  Serial.print("ID page version: ");
+  Serial.println(id.id_version);
+  Serial.print("Manufacturer: ");
+  Serial.println(id.manufacturer);
+  Serial.print("Part number: ");
+  Serial.println(id.part_number);
+  Serial.print("HW Version: ");
+  Serial.println(id.hw_version);
 
   if(eeprom.id_page_locked()){
     Serial.println("ID page locked, cannot change");
@@ -104,7 +128,13 @@ void setup() {
     int response = Serial.read();
 
     if(response == 'y'){
-      eeprom.write_id_page(8, &new_node_id);
+      memset(&id, 0, sizeof(id));
+      id.node_id = new_node_id;
+      id.id_version = ID_VERSION;
+      memcpy(id.manufacturer, MANUFACTURER, strlen(MANUFACTURER));
+      memcpy(id.part_number, PART_NUMBER, strlen(PART_NUMBER));
+      memcpy(id.hw_version, HARDWARE_REV, strlen(HARDWARE_REV));
+      eeprom.write_id_page(sizeof(id), &id);
       Serial.println("New node ID set");
     }else{
       Serial.println("Node ID not set");
