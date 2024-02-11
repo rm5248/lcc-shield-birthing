@@ -136,6 +136,22 @@ void setup() {
       memcpy(id.hw_version, HARDWARE_REV, strlen(HARDWARE_REV));
       eeprom.write_id_page(sizeof(id), &id);
       Serial.println("New node ID set");
+
+      while(Serial.available()){
+        Serial.read();
+      }
+
+      Serial.println();
+      Serial.println("Type 'y' to lock the ID page");
+      while(Serial.available() == 0){}
+      response = Serial.read();
+      if(response =='y'){
+        eeprom.lock_id_page();
+        Serial.println("ID page locked!");
+      }else{
+        Serial.println("ID page not locked");
+      }
+
     }else{
       Serial.println("Node ID not set");
     }
